@@ -19,11 +19,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Text;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Menu;
 using CounterStrikeSharp.API.Modules.Utils;
+using McMaster.NETCore.Plugins;
 
 namespace CounterStrikeSharp.API.Core
 {
@@ -35,10 +37,53 @@ namespace CounterStrikeSharp.API.Core
 
         private readonly List<PluginContext> _loadedPlugins = new();
 
+        public PluginApiRegistry ApiRegistry { get; } = new();
+
+        private readonly List<(AssemblyName name, Assembly assembly)> _sharedAssemblies = new();
+
+        private readonly AssemblyLoadContext _pluginLoadContext = new("plugin_load_context");
+
         public GlobalContext()
         {
             _rootDir = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory!.Parent!.FullName;
             Instance = this;
+
+            var defaultContext = AssemblyLoadContext.GetLoadContext(Assembly.GetExecutingAssembly())!;
+
+            _pluginLoadContext.Resolving += (context, name) =>
+            {
+                try
+                {
+                    return defaultContext.LoadFromAssemblyName(name);
+                }
+                catch
+                {
+                    var assembly = _sharedAssemblies.First(a => a.name.Name == name.Name);
+                    return assembly.assembly;
+                }
+            };
+
+            LoadSharedLibs();
+        }
+
+        private void LoadSharedLibs()
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGreen;
+            foreach (var dir in Directory.EnumerateDirectories(Path.Combine(_rootDir, "shared")))
+            {
+                var dirName = Path.GetFileName(dir);
+                var dllPath = Path.Combine(dir, dirName + ".dll");
+                if (!Path.Exists(dllPath)) continue;
+
+                var loader = PluginLoader.CreateFromAssemblyFile(dllPath, new[] { typeof(IPlugin) });
+                var assembly = loader.LoadDefaultAssembly();
+
+                _sharedAssemblies.Add((assembly.GetName(), assembly));
+
+                Console.WriteLine($"Load shared library: {assembly.FullName}");
+            }
+
+            Console.ResetColor();
         }
 
         ~GlobalContext()
@@ -85,7 +130,7 @@ namespace CounterStrikeSharp.API.Core
             RegisterPluginCommands();
         }
 
-        private void LoadPlugin(string path)
+        private PluginContext CreatePluginContext(string path)
         {
             var existingPlugin = FindPluginByModulePath(path);
             if (existingPlugin != null)
@@ -93,9 +138,15 @@ namespace CounterStrikeSharp.API.Core
                 throw new FileLoadException("Plugin is already loaded.");
             }
 
-            var plugin = new PluginContext(path, _loadedPlugins.Select(x => x.PluginId).DefaultIfEmpty(0).Max() + 1);
-            plugin.Load();
-            _loadedPlugins.Add(plugin);
+            return new PluginContext(path, _sharedAssemblies.Select(a => a.name), _pluginLoadContext,
+                _loadedPlugins.Select(x => x.PluginId).DefaultIfEmpty(0).Max() + 1);
+        }
+
+        private void LoadPlugin(string path)
+        {
+            var context = CreatePluginContext(path);
+            context.FullLoad();
+            _loadedPlugins.Add(context);
         }
 
         private int LoadAllPlugins()
@@ -126,16 +177,34 @@ namespace CounterStrikeSharp.API.Core
                 .Where(File.Exists)
                 .ToArray();
 
+            var contexts = new List<PluginContext>(filePaths.Length);
+
             foreach (var path in filePaths)
             {
                 Console.WriteLine($"Plugin path: {path}");
                 try
                 {
-                    LoadPlugin(path);
+                    var context = CreatePluginContext(path);
+                    context.InstantiatePlugin();
+
+                    contexts.Add(context);
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine($"Failed to load plugin {path} with error {e}");
+                }
+            }
+
+            foreach (var context in contexts)
+            {
+                try
+                {
+                    context.Load();
+                    _loadedPlugins.Add(context);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Failed to load plugin {context.Name} with error {e}");
                 }
             }
 
@@ -314,7 +383,7 @@ namespace CounterStrikeSharp.API.Core
                     }
 
                     plugin.Unload(true);
-                    plugin.Load(true);
+                    plugin.FullLoad(true);
                     break;
                 }
 
