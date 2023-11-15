@@ -29,17 +29,16 @@ namespace CounterStrikeSharp.API.Core
 {
     public sealed class GlobalContext
     {
-        private static GlobalContext _instance = null;
-        public static GlobalContext Instance => _instance;
+        public static GlobalContext Instance { get; private set; }
 
-        private DirectoryInfo rootDir;
+        private readonly string _rootDir;
 
         private readonly List<PluginContext> _loadedPlugins = new();
 
         public GlobalContext()
         {
-            rootDir = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory.Parent;
-            _instance = this;
+            _rootDir = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory!.Parent!.FullName;
+            Instance = this;
         }
 
         ~GlobalContext()
@@ -57,16 +56,17 @@ namespace CounterStrikeSharp.API.Core
                 plugin.Unload();
             }
         }
+
         public void InitGlobalContext()
         {
             Console.WriteLine("Loading CoreConfig from \"configs/core.json\"");
-            CoreConfig.Load(Path.Combine(rootDir.FullName, "configs", "core.json"));
+            CoreConfig.Load(Path.Combine(_rootDir, "configs", "core.json"));
 
             Console.WriteLine("Loading GameData from \"gamedata/gamedata.json\"");
-            GameData.Load(Path.Combine(rootDir.FullName, "gamedata", "gamedata.json"));
+            GameData.Load(Path.Combine(_rootDir, "gamedata", "gamedata.json"));
 
             Console.WriteLine("Loading Admins from \"configs/admins.json\"");
-            AdminManager.Load(Path.Combine(rootDir.FullName, "configs", "admins.json"));
+            AdminManager.Load(Path.Combine(_rootDir, "configs", "admins.json"));
 
             for (var i = 1; i <= 9; i++)
             {
@@ -103,7 +103,7 @@ namespace CounterStrikeSharp.API.Core
             DirectoryInfo modulesDirectoryInfo;
             try
             {
-                modulesDirectoryInfo = new DirectoryInfo(Path.Combine(rootDir.FullName, "plugins"));
+                modulesDirectoryInfo = new DirectoryInfo(Path.Combine(_rootDir, "plugins"));
             }
             catch (Exception e)
             {
@@ -121,12 +121,10 @@ namespace CounterStrikeSharp.API.Core
                 properModulesDirectories = Array.Empty<DirectoryInfo>();
             }
 
-
             var filePaths = properModulesDirectories
-                .Where(d => d.GetFiles().Any((f) => f.Name == d.Name + ".dll"))
-                .Select(d => d.GetFiles().First((f) => f.Name == d.Name + ".dll").FullName)
+                .Select(dir => Path.Combine(dir.FullName, Path.GetFileName(dir.FullName) + ".dll"))
+                .Where(File.Exists)
                 .ToArray();
-
 
             foreach (var path in filePaths)
             {
@@ -175,7 +173,6 @@ namespace CounterStrikeSharp.API.Core
 
         private PluginContext? FindPluginByIdOrName(string query)
         {
-
             PluginContext? plugin = null;
             if (Int32.TryParse(query, out var pluginNumber))
             {
@@ -194,7 +191,8 @@ namespace CounterStrikeSharp.API.Core
         {
             var currentVersion = Api.GetVersion();
 
-            info.ReplyToCommand("  CounterStrikeSharp was created and is maintained by Michael \"roflmuffin\" Wilson.\n" +
+            info.ReplyToCommand(
+                "  CounterStrikeSharp was created and is maintained by Michael \"roflmuffin\" Wilson.\n" +
                 "  Counter-Strike Sharp uses code borrowed from SourceMod, Source.Python, FiveM, Saul Rennison and CS2Fixes.\n" +
                 "  See ACKNOWLEDGEMENTS.md for more information.\n" +
                 "  Current API Version: " + currentVersion, true);
@@ -202,20 +200,22 @@ namespace CounterStrikeSharp.API.Core
         }
 
         [RequiresPermissions("can_execute_css_commands")]
-        [CommandHelper(minArgs: 1, 
-        usage: "[option]\n" +
-                "  list - List all plugins currently loaded.\n" +
-                "  start / load - Loads a plugin not currently loaded.\n" +
-                "  stop / unload - Unloads a plugin currently loaded.\n" +
-                "  restart / reload - Reloads a plugin currently loaded.",
-        whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
+        [CommandHelper(minArgs: 1,
+            usage: "[option]\n" +
+                   "  list - List all plugins currently loaded.\n" +
+                   "  start / load - Loads a plugin not currently loaded.\n" +
+                   "  stop / unload - Unloads a plugin currently loaded.\n" +
+                   "  restart / reload - Reloads a plugin currently loaded.",
+            whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
         private void OnCSSPluginCommand(CCSPlayerController? caller, CommandInfo info)
         {
             switch (info.GetArg(1))
             {
                 case "list":
                 {
-                    info.ReplyToCommand($"  List of all plugins currently loaded by CounterStrikeSharp: {_loadedPlugins.Count} plugins loaded.", true);
+                    info.ReplyToCommand(
+                        $"  List of all plugins currently loaded by CounterStrikeSharp: {_loadedPlugins.Count} plugins loaded.",
+                        true);
 
                     foreach (var plugin in _loadedPlugins)
                     {
@@ -228,8 +228,8 @@ namespace CounterStrikeSharp.API.Core
                             sb.Append("    ");
                             sb.Append(plugin.Description);
                         }
+
                         info.ReplyToCommand(sb.ToString(), true);
-                        
                     }
 
                     break;
@@ -239,7 +239,9 @@ namespace CounterStrikeSharp.API.Core
                 {
                     if (info.ArgCount < 2)
                     {
-                        info.ReplyToCommand("Valid usage: css_plugins start/load [relative plugin path || absolute plugin path] (e.g \"TestPlugin\", \"plugins/TestPlugin/TestPlugin.dll\")\n", true);
+                        info.ReplyToCommand(
+                            "Valid usage: css_plugins start/load [relative plugin path || absolute plugin path] (e.g \"TestPlugin\", \"plugins/TestPlugin/TestPlugin.dll\")\n",
+                            true);
                         break;
                     }
 
@@ -248,11 +250,11 @@ namespace CounterStrikeSharp.API.Core
                     var path = info.GetArg(2);
                     if (!path.EndsWith(".dll"))
                     {
-                        path = Path.Combine(rootDir.FullName, $"plugins/{path}/{path}.dll");
+                        path = Path.Combine(_rootDir, $"plugins/{path}/{path}.dll");
                     }
                     else
                     {
-                        path = Path.Combine(rootDir.FullName, path);
+                        path = Path.Combine(_rootDir, path);
                     }
 
                     try
@@ -272,7 +274,9 @@ namespace CounterStrikeSharp.API.Core
                 {
                     if (info.ArgCount < 2)
                     {
-                        info.ReplyToCommand("Valid usage: css_plugins stop/unload [plugin name || #plugin id] (e.g \"TestPlugin\", \"1\")\n", true);
+                        info.ReplyToCommand(
+                            "Valid usage: css_plugins stop/unload [plugin name || #plugin id] (e.g \"TestPlugin\", \"1\")\n",
+                            true);
                         break;
                     }
 
@@ -283,6 +287,7 @@ namespace CounterStrikeSharp.API.Core
                         info.ReplyToCommand($"Could not unload plugin \"{pluginIdentifier}\")", true);
                         break;
                     }
+
                     plugin.Unload();
                     _loadedPlugins.Remove(plugin);
                     break;
@@ -293,7 +298,9 @@ namespace CounterStrikeSharp.API.Core
                 {
                     if (info.ArgCount < 2)
                     {
-                        info.ReplyToCommand("Valid usage: css_plugins restart/reload [plugin name || #plugin id] (e.g \"TestPlugin\", \"#1\")\n", true);
+                        info.ReplyToCommand(
+                            "Valid usage: css_plugins restart/reload [plugin name || #plugin id] (e.g \"TestPlugin\", \"#1\")\n",
+                            true);
                         break;
                     }
 
@@ -305,6 +312,7 @@ namespace CounterStrikeSharp.API.Core
                         info.ReplyToCommand($"Could not reload plugin \"{pluginIdentifier}\")", true);
                         break;
                     }
+
                     plugin.Unload(true);
                     plugin.Load(true);
                     break;
@@ -312,21 +320,20 @@ namespace CounterStrikeSharp.API.Core
 
                 default:
                     info.ReplyToCommand("Valid usage: css_plugins [option]\n" +
-                        "  list - List all plugins currently loaded.\n" +
-                        "  start / load - Loads a plugin not currently loaded.\n" +
-                        "  stop / unload - Unloads a plugin currently loaded.\n" +
-                        "  restart / reload - Reloads a plugin currently loaded."
+                                        "  list - List all plugins currently loaded.\n" +
+                                        "  start / load - Loads a plugin not currently loaded.\n" +
+                                        "  stop / unload - Unloads a plugin currently loaded.\n" +
+                                        "  restart / reload - Reloads a plugin currently loaded."
                         , true);
                     break;
             }
-
         }
 
         private void RegisterPluginCommands()
         {
             CommandUtils.AddStandaloneCommand("css", "Counter-Strike Sharp options.", OnCSSCommand);
-            CommandUtils.AddStandaloneCommand("css_plugins", "Counter-Strike Sharp plugin options.", OnCSSPluginCommand);
+            CommandUtils.AddStandaloneCommand("css_plugins", "Counter-Strike Sharp plugin options.",
+                OnCSSPluginCommand);
         }
-        
     }
 }
