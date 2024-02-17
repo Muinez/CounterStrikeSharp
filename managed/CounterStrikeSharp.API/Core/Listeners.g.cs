@@ -5,8 +5,9 @@ using CounterStrikeSharp.API.Modules.Entities;
 
 namespace CounterStrikeSharp.API.Core
 {
-    public class Listeners {
-        
+    [Obsolete("Use ListenersDefs")]
+    public class Listeners 
+    {
         /// <summary>
         /// Called when an entity is spawned.
         /// </summary>

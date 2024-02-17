@@ -43,16 +43,17 @@ namespace CounterStrikeSharp.API.Core
             {
                 foreach (KeyValuePair<Delegate, EntityIO.EntityOutputCallback> callback in EntitySingleOutputHooks)
                 {
-                    UnhookSingleEntityOutputInternal(callback.Value.Classname, callback.Value.Output, callback.Value.Handler);
+                    UnhookSingleEntityOutputInternal(callback.Value.Classname, callback.Value.Output,
+                        callback.Value.Handler);
                 }
             });
         }
 
         public abstract string ModuleName { get; }
         public abstract string ModuleVersion { get; }
-        
+
         public virtual string ModuleAuthor { get; }
-        
+
         public virtual string ModuleDescription { get; }
 
         public string ModulePath { get; set; }
@@ -61,7 +62,7 @@ namespace CounterStrikeSharp.API.Core
         public ILogger Logger { get; set; }
 
         public IStringLocalizer Localizer { get; set; }
-        
+
         public virtual void Load(bool hotReload)
         {
         }
@@ -110,7 +111,7 @@ namespace CounterStrikeSharp.API.Core
 
         public readonly Dictionary<Delegate, CallbackSubscriber> CommandHandlers =
             new Dictionary<Delegate, CallbackSubscriber>();
-        
+
         public readonly Dictionary<Delegate, CallbackSubscriber> CommandListeners =
             new Dictionary<Delegate, CallbackSubscriber>();
 
@@ -127,7 +128,7 @@ namespace CounterStrikeSharp.API.Core
             new Dictionary<Delegate, EntityIO.EntityOutputCallback>();
 
         public readonly List<Timer> Timers = new List<Timer>();
-        
+
         public delegate HookResult GameEventHandler<T>(T @event, GameEventInfo info) where T : GameEvent;
 
         private void RegisterEventHandlerInternal<T>(string name, GameEventHandler<T> handler, bool post)
@@ -146,7 +147,8 @@ namespace CounterStrikeSharp.API.Core
         /// <typeparam name="T">The type of the game event.</typeparam>
         /// <param name="handler">The event handler to register.</param>
         /// <param name="hookMode">The mode in which the event handler is hooked. Default is `HookMode.Post`.</param>
-        public void RegisterEventHandler<T>(GameEventHandler<T> handler, HookMode hookMode = HookMode.Post) where T : GameEvent
+        public void RegisterEventHandler<T>(GameEventHandler<T> handler, HookMode hookMode = HookMode.Post)
+            where T : GameEvent
         {
             var name = typeof(T).GetCustomAttribute<EventNameAttribute>()?.Name;
             RegisterEventHandlerInternal(name, handler, hookMode == HookMode.Post);
@@ -174,14 +176,14 @@ namespace CounterStrikeSharp.API.Core
             {
                 var caller = (i != -1) ? new CCSPlayerController(NativeAPI.GetEntityFromIndex(i + 1)) : null;
                 var command = new CommandInfo(ptr, caller);
-                
+
                 using var temporaryCulture = new WithTemporaryCulture(caller.GetLanguage());
 
                 var methodInfo = handler?.GetMethodInfo();
 
                 // We do not need to do permission checks on commands executed from the server console.
                 // The server will always be allowed to execute commands (unless marked as client only like above)
-                if (caller != null) 
+                if (caller != null)
                 {
                     // Do not execute command if we do not have the correct permissions.
                     var adminData = AdminManager.GetPlayerAdminData(caller!.AuthorizedSteamID);
@@ -195,8 +197,11 @@ namespace CounterStrikeSharp.API.Core
                         var data = AdminManager.GetCommandOverrideData(name);
                         if (data != null)
                         {
-                            var attrType = (data.CheckType == "all") ? typeof(RequiresPermissions) : typeof(RequiresPermissionsOr);
-                            var attr = (BaseRequiresPermissions)Activator.CreateInstance(attrType, args: AdminManager.GetPermissionOverrides(name));
+                            var attrType = (data.CheckType == "all")
+                                ? typeof(RequiresPermissions)
+                                : typeof(RequiresPermissionsOr);
+                            var attr = (BaseRequiresPermissions)Activator.CreateInstance(attrType,
+                                args: AdminManager.GetPermissionOverrides(name));
 
                             if (attr != null) permissionsToCheck.Add(attr);
                         }
@@ -214,12 +219,14 @@ namespace CounterStrikeSharp.API.Core
                         attr.Command = name;
                         if (!attr.CanExecuteCommand(caller))
                         {
-                            var responseStr = (attr.GetType() == typeof(RequiresPermissions)) ?
-                            "You are missing the correct permissions" : "You do not have one of the correct permissions";
+                            var responseStr = (attr.GetType() == typeof(RequiresPermissions))
+                                ? "You are missing the correct permissions"
+                                : "You do not have one of the correct permissions";
 
                             var flags = attr.Permissions.Except(adminData?.GetAllFlags() ?? new HashSet<string>());
                             flags = flags.Except(adminData?.Groups ?? new HashSet<string>());
-                            command.ReplyToCommand($"[CSS] {responseStr} ({string.Join(", ", flags)}) to execute this command.");
+                            command.ReplyToCommand(
+                                $"[CSS] {responseStr} ({string.Join(", ", flags)}) to execute this command.");
 
                             return;
                         }
@@ -234,12 +241,24 @@ namespace CounterStrikeSharp.API.Core
                     {
                         case CommandUsage.CLIENT_AND_SERVER: break; // Allow command through.
                         case CommandUsage.CLIENT_ONLY:
-                            if (caller == null || !caller.IsValid) { command.ReplyToCommand("[CSS] This command can only be executed by clients."); return; }
+                            if (caller == null || !caller.IsValid)
+                            {
+                                command.ReplyToCommand("[CSS] This command can only be executed by clients.");
+                                return;
+                            }
+
                             break;
                         case CommandUsage.SERVER_ONLY:
-                            if (caller != null && caller.IsValid) { command.ReplyToCommand("[CSS] This command can only be executed by the server."); return; }
+                            if (caller != null && caller.IsValid)
+                            {
+                                command.ReplyToCommand("[CSS] This command can only be executed by the server.");
+                                return;
+                            }
+
                             break;
-                        default: throw new ArgumentException("Unrecognised CommandUsage value passed in CommandHelperAttribute.");
+                        default:
+                            throw new ArgumentException(
+                                "Unrecognised CommandUsage value passed in CommandHelperAttribute.");
                     }
 
                     // Technically the command itself counts as the first argument, 
@@ -249,9 +268,12 @@ namespace CounterStrikeSharp.API.Core
                         // Remove the "css_" from the beginning of the command name if it's present.
                         // Most of the time, users will be calling commands from chat.
                         var commandCalled = command.ArgByIndex(0);
-                        var properCommandName = (commandCalled.StartsWith("css_")) ? commandCalled.Replace("css_", "") : commandCalled;
+                        var properCommandName = (commandCalled.StartsWith("css_"))
+                            ? commandCalled.Replace("css_", "")
+                            : commandCalled;
 
-                        command.ReplyToCommand($"[CSS] Expected usage: \"!{properCommandName} {helperAttribute.Usage}\".");
+                        command.ReplyToCommand(
+                            $"[CSS] Expected usage: \"!{properCommandName} {helperAttribute.Usage}\".");
                         return;
                     }
                 }
@@ -268,7 +290,8 @@ namespace CounterStrikeSharp.API.Core
             CommandHandlers[handler] = subscriber;
         }
 
-        public void AddCommandListener(string? name, CommandInfo.CommandListenerCallback handler, HookMode mode = HookMode.Pre)
+        public void AddCommandListener(string? name, CommandInfo.CommandListenerCallback handler,
+            HookMode mode = HookMode.Pre)
         {
             var wrappedHandler = new Func<int, IntPtr, HookResult>((i, ptr) =>
             {
@@ -278,7 +301,8 @@ namespace CounterStrikeSharp.API.Core
                 return handler.Invoke(caller, command);
             });
 
-            var subscriber = new CallbackSubscriber(handler, wrappedHandler, () => { RemoveCommandListener(name, handler, mode); });
+            var subscriber = new CallbackSubscriber(handler, wrappedHandler,
+                () => { RemoveCommandListener(name, handler, mode); });
             NativeAPI.AddCommandListener(name, subscriber.GetInputArgument(), mode == HookMode.Post);
             CommandListeners[handler] = subscriber;
         }
@@ -349,7 +373,8 @@ namespace CounterStrikeSharp.API.Core
                 .Select(p => p.GetCustomAttribute<CastFromAttribute>()?.Type)
                 .ToArray();
 
-            Application.Instance.Logger.LogDebug("Registering listener for {ListenerName} with {ParameterCount} parameters",
+            Application.Instance.Logger.LogDebug(
+                "Registering listener for {ListenerName} with {ParameterCount} parameters",
                 listenerName, parameterTypes.Length);
 
             var wrappedHandler = new Action<ScriptContext>(context =>
@@ -367,6 +392,26 @@ namespace CounterStrikeSharp.API.Core
 
             var subscriber =
                 new CallbackSubscriber(handler, wrappedHandler, () => { RemoveListener(listenerName, handler); });
+
+            NativeAPI.AddListener(listenerName, subscriber.GetInputArgument());
+            Listeners[handler] = subscriber;
+        }
+
+        public void RegisterListener<THandler>(ListenerDefinition<THandler> listener, THandler handler)
+            where THandler : Delegate
+        {
+            var listenerName = listener.Name;
+            if (string.IsNullOrEmpty(listenerName))
+            {
+                throw new Exception("Listener of type T is invalid and does not have a name attribute");
+            }
+
+            Application.Instance.Logger.LogDebug(
+                "Registering listener for {ListenerName} ", listenerName);
+            
+            var wrapper = new Action<ScriptContext>(ctx => listener.Call(ctx, handler));
+            var subscriber =
+                new CallbackSubscriber(handler, wrapper, () => { RemoveListener(listenerName, handler); });
 
             NativeAPI.AddListener(listenerName, subscriber.GetInputArgument());
             Listeners[handler] = subscriber;
@@ -399,7 +444,8 @@ namespace CounterStrikeSharp.API.Core
         public void InitializeConfig(object instance, Type pluginType)
         {
             Type[] interfaces = pluginType.GetInterfaces();
-            Func<Type, bool> predicate = (i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IPluginConfig<>));
+            Func<Type, bool> predicate =
+                (i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IPluginConfig<>));
 
             // if the plugin has set a configuration type (implements IPluginConfig<>)
             if (interfaces.Any(predicate))
@@ -482,12 +528,14 @@ namespace CounterStrikeSharp.API.Core
                 var attributes = handler.GetCustomAttributes<EntityOutputHookAttribute>();
                 foreach (var outputInfo in attributes)
                 {
-                    HookEntityOutput(outputInfo.Classname, outputInfo.OutputName, handler.CreateDelegate<EntityIO.EntityOutputHandler>(instance));
+                    HookEntityOutput(outputInfo.Classname, outputInfo.OutputName,
+                        handler.CreateDelegate<EntityIO.EntityOutputHandler>(instance));
                 }
             }
         }
 
-        public void HookEntityOutput(string classname, string outputName, EntityIO.EntityOutputHandler handler, HookMode mode = HookMode.Pre)
+        public void HookEntityOutput(string classname, string outputName, EntityIO.EntityOutputHandler handler,
+            HookMode mode = HookMode.Pre)
         {
             var subscriber = new CallbackSubscriber(handler, handler,
                 () => UnhookEntityOutput(classname, outputName, handler));
@@ -496,7 +544,8 @@ namespace CounterStrikeSharp.API.Core
             EntityOutputHooks[handler] = subscriber;
         }
 
-        public void UnhookEntityOutput(string classname, string outputName, EntityIO.EntityOutputHandler handler, HookMode mode = HookMode.Pre)
+        public void UnhookEntityOutput(string classname, string outputName, EntityIO.EntityOutputHandler handler,
+            HookMode mode = HookMode.Pre)
         {
             if (!EntityOutputHooks.TryGetValue(handler, out var subscriber)) return;
 
@@ -505,7 +554,8 @@ namespace CounterStrikeSharp.API.Core
             EntityOutputHooks.Remove(handler);
         }
 
-        public void HookSingleEntityOutput(CEntityInstance entityInstance, string outputName, EntityIO.EntityOutputHandler handler)
+        public void HookSingleEntityOutput(CEntityInstance entityInstance, string outputName,
+            EntityIO.EntityOutputHandler handler)
         {
             // since we wrap around the plugin handler we need to do this to ensure that the plugin callback is only called
             // if the entity instance is the same.
@@ -525,15 +575,18 @@ namespace CounterStrikeSharp.API.Core
             // but the plugin could only pass the original handler for unhooking.
             // (this dictionary does not needed to be cleared on dispose as it has no unmanaged reference and those are already being disposed, but on map end)
             // (the internal class is needed to be able to remove them on map start)
-            EntitySingleOutputHooks[handler] = new EntityIO.EntityOutputCallback(entityInstance.DesignerName, outputName, internalHandler);
+            EntitySingleOutputHooks[handler] =
+                new EntityIO.EntityOutputCallback(entityInstance.DesignerName, outputName, internalHandler);
         }
 
-        public void UnhookSingleEntityOutput(CEntityInstance entityInstance, string outputName, EntityIO.EntityOutputHandler handler)
+        public void UnhookSingleEntityOutput(CEntityInstance entityInstance, string outputName,
+            EntityIO.EntityOutputHandler handler)
         {
             UnhookSingleEntityOutputInternal(entityInstance.DesignerName, outputName, handler);
         }
 
-        private void UnhookSingleEntityOutputInternal(string classname, string outputName, EntityIO.EntityOutputHandler handler)
+        private void UnhookSingleEntityOutputInternal(string classname, string outputName,
+            EntityIO.EntityOutputHandler handler)
         {
             if (!EntitySingleOutputHooks.TryGetValue(handler, out var internalHandler)) return;
 
@@ -560,7 +613,7 @@ namespace CounterStrikeSharp.API.Core
             {
                 subscriber.Dispose();
             }
-            
+
             foreach (var subscriber in CommandListeners.Values)
             {
                 subscriber.Dispose();
